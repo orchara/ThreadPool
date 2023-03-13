@@ -3,10 +3,11 @@
 #include <functional>
 #include <thread>
 #include <condition_variable>
-#include <vector>
 #include <mutex>
 #include <atomic>
+#include <vector>
 #include <list>
+#include <set>
 
 
 class ThreadPool{
@@ -15,6 +16,7 @@ private:
     std::atomic<bool> is_runing;
     std::atomic<size_t> id {0};
     std::vector<std::thread> threads;
+    std::set<size_t> complete_task_idx;
     std::list<std::pair<std::function<void()>, size_t>> queue;
     std::mutex queue_lock, state_lock;
     std::condition_variable queue_check, work_state;
@@ -53,7 +55,14 @@ public:
         });
     }
 
-    
+
+    void wait(size_t t_id){
+        std::unique_lock<std::mutex> s_lock(state_lock);
+        work_state.wait(s_lock, [this, &t_id](){
+            return complete_task_idx.find(t_id) != complete_task_idx.end();
+        });
+        
+    }    
 
 
     void stop(){
@@ -79,7 +88,12 @@ private:
                 auto task = std::move(queue.front());
                 queue.pop_front();
                 task.first();
+                q_lock.unlock();
+                q_lock.release();
+                std::unique_lock<std::mutex> q_lock(state_lock);
+                complete_task_idx.insert(std::move(task.second));
                 work_state.notify_all();
+
             }
         }
         std::cout << "thread " << std::this_thread::get_id() << " closed up\n";
