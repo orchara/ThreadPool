@@ -5,13 +5,13 @@
 #include "pooler.hpp"
 
 void twice(int x, int& res){
-    std::this_thread::sleep_for (std::chrono::seconds(6));
+    std::this_thread::sleep_for (std::chrono::seconds(2));
     res = x * 2;
     return;
 }
 
 int add_five(int x, int& res){
-    std::this_thread::sleep_for (std::chrono::seconds(20));
+    std::this_thread::sleep_for (std::chrono::seconds(3));
     res = x + 5;
     return res;
 }
@@ -19,13 +19,13 @@ int add_five(int x, int& res){
 
 int main(){
     try{
-        
+        ThreadPool trd(2);
         std::function<void(int, int&)> t_square = [] (int x, int& res) {
             res = x * x;
             std::cout << "lambda in work\n";
             };
-            
-        ThreadPool trd(2);
+
+        
         std::vector<int> r(4, 0);
         trd.add_task(add_five, 10, std::ref(r[2]));
         trd.add_task(t_square, 3, std::ref(r[0]));

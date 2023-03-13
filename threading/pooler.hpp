@@ -13,8 +13,9 @@ class ThreadPool{
 private:
     size_t size;
     std::atomic<bool> is_runing;
+    std::atomic<size_t> id {0};
     std::vector<std::thread> threads;
-    std::list<std::function<void()>> queue;
+    std::list<std::pair<std::function<void()>, size_t>> queue;
     std::mutex queue_lock, state_lock;
     std::condition_variable queue_check, work_state;
 
@@ -36,10 +37,11 @@ public:
     template <typename _Fn, typename... _Args>
     size_t add_task(_Fn&& func, _Args&&... ag){
         auto tmp = std::bind(std::forward<_Fn>(func), std::forward<_Args>(ag)...);
+        size_t t_id = get_id();
         std::lock_guard<std::mutex> q_lock(queue_lock);
-        queue.push_back([tmp](){tmp();});
+        queue.push_back({[tmp](){tmp();}, t_id});
         queue_check.notify_one();
-        return 0;
+        return t_id;
     }
 
 
@@ -50,6 +52,9 @@ public:
             return queue.empty();
         });
     }
+
+    
+
 
     void stop(){
         is_runing = false;
@@ -68,17 +73,22 @@ private:
     void work(){
         while(is_runing){
             std::unique_lock<std::mutex> q_lock(queue_lock);
-            queue_check.wait(q_lock);
+            queue_check.wait(q_lock, [this](){return !queue.empty() || !is_runing;});
             
             if(!queue.empty()){
                 auto task = std::move(queue.front());
                 queue.pop_front();
-                q_lock.unlock();
-                task();
+                task.first();
                 work_state.notify_all();
             }
         }
         std::cout << "thread " << std::this_thread::get_id() << " closed up\n";
         return;
+    }
+
+    size_t get_id(){
+        size_t res = id.load(std::memory_order_relaxed);
+        id.store(res + 1, std::memory_order_relaxed);
+        return res;
     }
 };
