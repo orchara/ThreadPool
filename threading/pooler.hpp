@@ -96,13 +96,10 @@ private:
                     
                         auto task = std::move(queue.front());
                         queue.pop_front();
-                        std::cout << "in work befeore try\n";
                     try {
-                        std::cout << "in work inside try\n";
                         task.first();
-                    } catch (const std::exception& ex) {
-                        std::cout << "in work inside catch\n";
-                        thread_exceptions.push(ex);
+                    } catch (std::exception& ex) {
+                        thread_exceptions.push(std::make_exception_ptr(ex));
                     }
                         q_lock.unlock();
                         q_lock.release();

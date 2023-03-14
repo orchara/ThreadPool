@@ -8,7 +8,7 @@
 
 class ErrorHandler {
 private:
-    std::list<std::exception> exceptions;
+    std::list<std::exception_ptr> exceptions;
     std::mutex mtx;
     std::atomic<bool> is_runing {false};
 
@@ -19,20 +19,15 @@ public:
             while(exceptions.empty() && is_runing){
                 std::this_thread::yield();
             }
-            std::cout << "before try\n" << exceptions.size() << std::endl;
             try {
                 if(!exceptions.empty()) {
-                    std::exception_ptr p = std::make_exception_ptr(pop());
-                    std::cout << "exception throw\n";
+                    std::exception_ptr p = pop();
                     std::rethrow_exception(p);
                 }
-            } catch (const std::exception& ex) {
-                std::cerr << ex.what() << std::endl;
-                std::cout << "in catch\n";
+            } catch (std::exception& ex) {
+                std::cerr << "ex.what(): " << ex.what() << std::endl;
             }
-            std::cout << "after catch\n";    
         }
-        std::cout << "stop\n";
     }
 
 
@@ -41,7 +36,7 @@ public:
     }
 
 
-    void push(std::exception ex) {
+    void push(std::exception_ptr ex) {
         std::cout << "push\n";
         if(is_runing){
             std::lock_guard<std::mutex> mu_lock(mtx);
@@ -50,9 +45,9 @@ public:
     }
 
 private:
-    std::exception pop() {
+    std::exception_ptr pop() {
         std::lock_guard<std::mutex> mu_lock(mtx);
-        std::exception ex = exceptions.front();
+        std::exception_ptr ex = exceptions.front();
         exceptions.pop_front();
         return ex;
     }
