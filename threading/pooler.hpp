@@ -1,5 +1,6 @@
 #pragma once
 
+#include <iostream>
 #include <functional>
 #include <thread>
 #include <condition_variable>
@@ -34,6 +35,9 @@ public:
     }
 
     ~ThreadPool(){
+        std::unique_lock<std::mutex> e_lock(err_lock);
+        thread_exceptions.work_state.wait(e_lock, [this]() {return thread_exceptions.is_done();});
+        err_log_print();
         Join();
     }
 
@@ -52,7 +56,7 @@ public:
     void wait_all(){
         std::unique_lock<std::mutex> s_lock(state_lock);
         work_state.wait(s_lock, [this]()->bool{
-            // std::lock_guard<std::mutex> q_lock(queue_lock);
+            std::lock_guard<std::mutex> q_lock(queue_lock);
             return queue.empty();
         });
     }
@@ -64,11 +68,10 @@ public:
             return complete_task_idx.find(t_id) != complete_task_idx.end();
         });
         
-    }    
+    }
 
     void error_handle() {
-        // std::thread er_h();
-        threads.push_back(std::thread(&ErrorHandler::start, &thread_exceptions));
+        threads.push_back(std::thread(&ErrorHandler::handler, &thread_exceptions));
     }
 
     void stop(){
@@ -93,18 +96,20 @@ private:
                 queue_check.wait(q_lock, [this](){return !queue.empty() || !is_runing;});
                 
                 if(!queue.empty()){
-                    
+                    try {
                         auto task = std::move(queue.front());
                         queue.pop_front();
-                    try {
-                        task.first();
-                    } catch (std::exception& ex) {
-                        thread_exceptions.push(std::make_exception_ptr(ex));
-                    }
                         q_lock.unlock();
                         q_lock.release();
+                        task.first();
                         std::unique_lock<std::mutex> q_lock(state_lock);
                         complete_task_idx.insert(std::move(task.second));
+                    } catch (std::exception& ex) {
+                        thread_exceptions.push(std::current_exception());
+                    } catch (...){
+                        std::cerr << "Internal error\n shuting down.\n";
+                        exit(1);
+                    }
                         work_state.notify_all();
                     
                 }
@@ -117,5 +122,13 @@ private:
         size_t res = id.load(std::memory_order_relaxed);
         id.store(res + 1, std::memory_order_relaxed);
         return res;
+    }
+
+    void err_log_print(){
+        std::vector<std::string> log = thread_exceptions.get_log();
+        std::cout << log.size() << " exception catched\n";
+        if(log.empty()) { return; }
+        std::cout << "exceptions:\n";
+        for(auto& s : log) { std::cout << s; }
     }
 };
